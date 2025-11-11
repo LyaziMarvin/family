@@ -216,14 +216,13 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="mb-0">Ask About This File</h4>
 
-        <div class="d-flex align-items-center gap-2 model-picker" id="modelPicker">
+        <div class="d-flex align-items-center gap-3 model-picker" id="modelPicker">
           <span class="small-muted mb-0">Model:</span>
           <div class="btn-group" role="group" aria-label="Model selection" hidden>
             <button type="button" class="btn btn-outline-secondary" id="btnModelOffline" data-model="offline">Local / Offline</button>
             <button type="button" class="btn btn-outline-secondary" id="btnModelOnline"  data-model="online">Online Granite</button>
           </div>
-          <span id="modelStatusBadge" class="badge bg-warning text-dark">No model selected</span>
-          <span id="collectionBadge" class="badge bg-info text-dark">Index: </span>
+          <span id="modelStatusBadge" class="badge bg-success text-dark" style="font-size:0.95rem;padding:8px 14px;">No model selected</span>
         </div>
       </div>
 
@@ -264,7 +263,7 @@
     <!-- About -->
     <div id="about" class="section hidden section-white">
       <h4>About</h4>
-      <p id="aboutModelText">Current model: checking...</p>
+      <p id="aboutModelText" style="font-size:1.1rem;font-weight:500;">Current model: checking...</p>
     </div>
   </div>
 
