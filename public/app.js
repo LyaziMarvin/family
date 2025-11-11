@@ -300,7 +300,8 @@ function showSection(id) {
     profile: "User Profile",
     upload: "Shared Documents",
     installedAgents: "Installed Agents",
-    qa: "Ask a Question"
+    qa: "Ask a Question",
+    about: "About"
   };
   document.getElementById("sectionTitle").textContent = titles[id] || id;
 
@@ -315,6 +316,7 @@ function showSection(id) {
     prepareScopePickerOnEnterQA();
     updateCollectionBadge();
   }
+  if (id === 'about') updateAboutSection();
 }
 
 // -------- Profile --------
@@ -815,9 +817,24 @@ function updateCollectionBadge() {
 function getStoredModel() { return localStorage.getItem(MODEL_KEY) || 'none'; }
 function storeModel(value) { localStorage.setItem(MODEL_KEY, value); }
 
+function updateAboutSection() {
+  const el = document.getElementById('aboutModelText');
+  if (!el) return;
+  const st = getStoredModel();
+  const modelName = 'granite3.2:2b';
+  if (st === 'online') {
+    el.textContent = `Current model: Online Granite (${modelName})`;
+  } else if (st === 'offline') {
+    el.textContent = `Current model: Local / Offline (${modelName})`;
+  } else {
+    el.textContent = `Current model: not selected (defaults to ${modelName})`;
+  }
+}
+
 function setAskControlsEnabled(enabled) {
   __modelSelectionAllowsQuestions = !!enabled;
   updateQuestionInputState();
+  updateAboutSection();
 }
 
 function updateModelBadge(state) {
@@ -1023,36 +1040,43 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
     const onChunk = (data) => {
       if (!data) return;
 
-      const trimmed = String(data).trim();
-      const parsed = safeParseJSON(trimmed);
+      const raw = String(data);
 
-      // mark first byte arrival
       if (!firstChunkAt) {
         firstChunkAt = performance.now();
         clearTimeout(stallTimer);
         updateBanner();
       }
 
-      let visible = '';
-      if (parsed) {
-        if (parsed.type === 'done' || parsed.done === true) {
-          try { window.api.removeAskStreamListeners(); } catch { }
-          updateBanner();
-          resolve({ success: true });
-          return;
+      const segments = raw.split(/\n?\n/).filter(Boolean);
+      for (const segment of segments) {
+        const trimmed = segment.trim();
+        if (!trimmed) continue;
+
+        const parsed = safeParseJSON(trimmed);
+        let appended = '';
+        if (parsed) {
+          if (parsed.type === 'sources') continue;
+
+          if (parsed.type === 'done' || parsed.done === true) {
+            try { window.api.removeAskStreamListeners(); } catch { }
+            clearTimeout(stallTimer);
+            updateBanner();
+            resolve({ success: true });
+            return;
+          }
+
+          const visible = extractVisibleFromParsed(parsed);
+          if (!visible) continue;
+
+          appendToAnswer(visible);
+          appended = visible;
+        } else {
+          appendToAnswer(segment);
+          appended = segment;
         }
-        // ignore any "sources" metadata entirely
-        if (parsed.type === 'sources') return;
 
-        visible = extractVisibleFromParsed(parsed);
-      } else {
-        visible = trimmed;
-      }
-
-      if (visible) {
-        appendToAnswer(visible);
-        // first time we actually *append* user-visible text
-        if (!firstTypedAt && /\S/.test(visible)) {
+        if (!firstTypedAt && /\S/.test(appended)) {
           firstTypedAt = performance.now();
           updateBanner();
         }
