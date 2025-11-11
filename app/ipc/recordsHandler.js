@@ -51,7 +51,7 @@ function normalizeTopic(s) {
   let t = String(s).trim();
   t = t.replace(/^\s*(topic:|main topic:)\s*/i, '').trim();
   t = t.replace(/[\s\.\!\?]+$/,'').trim();
-  t = t.replace(/\s+/g, ' ').slice(0, 120);
+  t = t.replace(/\s+/g, ' ');
   if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
   return t || null;
 }
