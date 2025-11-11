@@ -17,6 +17,8 @@ body { background-color: #eaf4fc; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 .upload-tab.active { display: block; }
 .record-item { cursor: pointer; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; border-bottom: 1px solid #eee; }
 .record-item:hover { background: rgba(32,80,129,0.03); }
+.record-item.active-record { background: rgba(32,80,129,0.08); border-left: 3px solid #205081; }
+.record-item.active-record:hover { background: rgba(32,80,129,0.12); }
 .tab-icons button { margin-right: 10px; }
 .section-white, .upload-white, .response-box { background: #ffffff; border-radius: 8px; }
 .section-white { padding: 15px; }
@@ -56,3 +58,5 @@ body { background-color: #eaf4fc; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 
 /* Scope picker scroll */
 #scopeFileList { max-height: 180px; overflow: auto; }
+
+#activeDocStatus { min-height: 1.25em; }

@@ -1,9 +1,15 @@
-// -------- Auth bootstrap --------
+﻿// -------- Auth bootstrap --------
 const token = localStorage.getItem('token');
 if (!token) { window.location.href = "login.html"; }
 
+const ACTIVE_RECORD_STORAGE_KEY = 'activeRecordId';
+const storedActiveRecordId = localStorage.getItem(ACTIVE_RECORD_STORAGE_KEY);
+
 let __currentUser = null;
-let __currentRecordId = null;
+let __currentRecordId = storedActiveRecordId ? Number(storedActiveRecordId) : null;
+if (Number.isNaN(__currentRecordId)) __currentRecordId = null;
+let __activeRecordMeta = null;
+let __activeDocStatusTimer = null;
 
 async function loadCurrentUser() {
   try {
@@ -19,6 +25,118 @@ function logout() {
   localStorage.clear();
   window.location.href = "login.html";
 }
+
+function setActiveDocStatus(message, autoClearMs = null) {
+  const statusEl = document.getElementById('activeDocStatus');
+  if (!statusEl) return;
+  if (__activeDocStatusTimer) {
+    clearTimeout(__activeDocStatusTimer);
+    __activeDocStatusTimer = null;
+  }
+  statusEl.textContent = message || '';
+  if (message && autoClearMs) {
+    __activeDocStatusTimer = setTimeout(() => {
+      statusEl.textContent = '';
+      __activeDocStatusTimer = null;
+    }, autoClearMs);
+  }
+}
+
+function highlightActiveRecordRow() {
+  const rows = document.querySelectorAll('.record-item');
+  rows.forEach(row => {
+    const rowId = Number(row?.dataset?.id);
+    if (__currentRecordId && rowId === Number(__currentRecordId)) {
+      row.classList.add('active-record');
+    } else {
+      row.classList.remove('active-record');
+    }
+  });
+}
+
+function updateActiveDocumentUI(topicText = null) {
+  const metaEl = document.getElementById("selectedFileMeta");
+  const noticeEl = document.getElementById("activeDocNotice");
+  const qaNoticeEl = document.getElementById("qaActiveDocNotice");
+  const regenBtn = document.getElementById("regenTopicBtn");
+
+  if (!__activeRecordMeta) {
+    if (metaEl) metaEl.textContent = 'No active document selected.';
+    if (noticeEl) noticeEl.textContent = 'No active document selected.';
+    if (qaNoticeEl) qaNoticeEl.textContent = 'Active document: none selected.';
+    if (regenBtn) regenBtn.disabled = true;
+    if (topicText !== null) {
+      const textTarget = document.getElementById("extractedText");
+      if (textTarget) textTarget.textContent = '';
+    }
+    highlightActiveRecordRow();
+    return;
+  }
+
+  const detailParts = [__activeRecordMeta.name];
+  if (__activeRecordMeta.uploaded_at) detailParts.push(__activeRecordMeta.uploaded_at);
+  const detail = detailParts.join(' · ');
+
+  if (metaEl) metaEl.textContent = `Active document: ${detail}`;
+  if (noticeEl) noticeEl.textContent = `Active document: ${detail}`;
+  if (qaNoticeEl) qaNoticeEl.textContent = `Active document: ${__activeRecordMeta.name}`;
+  if (regenBtn) regenBtn.disabled = false;
+
+  if (topicText !== null) {
+    const textTarget = document.getElementById("extractedText");
+    if (textTarget) textTarget.textContent = topicText ? topicText : '(No topic yet)';
+  }
+  highlightActiveRecordRow();
+}
+
+function clearActiveDocument() {
+  __currentRecordId = null;
+  __activeRecordMeta = null;
+  localStorage.removeItem(ACTIVE_RECORD_STORAGE_KEY);
+  updateActiveDocumentUI('');
+  setActiveDocStatus('');
+}
+
+async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = {}) {
+  const recordId = Number(recordMeta?.id);
+  if (!recordId) return;
+
+  if (showPreparingMessage) {
+    setActiveDocStatus('Preparing document for questions... This may take a couple of minutes, depending on the size of the document.');
+  }
+
+  try {
+    const response = await window.api.getRecordById(recordId, token);
+    if (!response || !response.success) {
+      if (showPreparingMessage) {
+        const errMsg = response?.error || 'Failed to load document.';
+        setActiveDocStatus(errMsg, 6000);
+      }
+      return;
+    }
+
+    const data = response.data || {};
+    const name = data.file_name || recordMeta.file_name || `Record ${recordId}`;
+    const uploaded = data.uploaded_at || recordMeta.uploaded_at || '';
+    __currentRecordId = recordId;
+    localStorage.setItem(ACTIVE_RECORD_STORAGE_KEY, String(recordId));
+    __activeRecordMeta = { id: recordId, name, uploaded_at: uploaded };
+
+    const topic = (data.topic && String(data.topic).trim()) || '';
+    updateActiveDocumentUI(topic);
+
+    if (showPreparingMessage) {
+      setActiveDocStatus('Document ready for questions.', 4000);
+    } else {
+      setActiveDocStatus('');
+    }
+  } catch (err) {
+    const msg = err?.message || 'Unknown error';
+    setActiveDocStatus(`Failed to prepare document: ${msg}`, 6000);
+  }
+}
+
+updateActiveDocumentUI();
 
 // -------- Inline notices (uploads) --------
 function showRecordMessage(type, text) {
@@ -306,12 +424,18 @@ async function handleUpload() {
     statusEl.textContent = res && res.success ? "✅ Import successful" : `❌ ${(res && res.error) || 'Upload failed.'}`;
 
     if (res && res.success) {
+      const recordId = res.data && res.data.recordId ? Number(res.data.recordId) : null;
+      if (recordId) {
+        __currentRecordId = recordId;
+        localStorage.setItem(ACTIVE_RECORD_STORAGE_KEY, String(recordId));
+        __activeRecordMeta = null;
+      }
+
       await loadDocumentRecords();
       if (document.getElementById('scopeSelected')) { refreshScopeFiles(); }
 
       // Auto-summary after upload
       try {
-        const recordId = res.data && res.data.recordId;
         if (recordId) {
           const q = "What is the main topic of this document?";
           const streamScope = { type: 'ids', ids: [recordId] };
@@ -346,14 +470,18 @@ async function loadDocumentRecords() {
     c.innerHTML = '';
     if (!res || !res.success || !Array.isArray(res.data) || res.data.length === 0) {
       c.innerHTML = '<div class="text-muted">No files found.</div>';
-      document.getElementById("selectedFileMeta").textContent = '';
-      document.getElementById("extractedText").textContent = '';
-      document.getElementById("regenTopicBtn").disabled = true;
-      __currentRecordId = null;
+      clearActiveDocument();
       return;
     }
 
-    res.data.forEach(r => {
+    const records = res.data;
+    let desiredActiveId = __currentRecordId;
+    if (!desiredActiveId && records.length > 0) {
+      desiredActiveId = records[0].id;
+    }
+    let desiredRecordMeta = null;
+
+    records.forEach(r => {
       const row = document.createElement("div");
       row.className = "record-item";
       row.dataset.id = r.id;
@@ -392,12 +520,8 @@ async function loadDocumentRecords() {
               delBtn.textContent = '…';
               const delRes = await window.api.deleteRecord(r.id, token);
               if (delRes && delRes.success) {
-                const metaEl = document.getElementById("selectedFileMeta");
-                if (metaEl.textContent && metaEl.textContent.startsWith(r.file_name || `Record ${r.id}`)) {
-                  metaEl.textContent = '';
-                  document.getElementById("extractedText").textContent = '';
-                  document.getElementById("regenTopicBtn").disabled = true;
-                  __currentRecordId = null;
+                if (__currentRecordId && Number(__currentRecordId) === Number(r.id)) {
+                  clearActiveDocument();
                 }
                 showRecordMessage('success', '✅ File deleted.');
                 await loadDocumentRecords();
@@ -423,26 +547,26 @@ async function loadDocumentRecords() {
       row.appendChild(left);
       row.appendChild(right);
 
-      row.onclick = async () => {
-        try {
-          const s = await window.api.getRecordById(r.id, token);
-          const m = document.getElementById("selectedFileMeta");
-          const t = document.getElementById("extractedText");
-          if (!s || !s.success) { m.textContent = ''; t.textContent = '❌ Failed to load text.'; return; }
-          const fl = s.data.file_name || r.file_name || `Record ${r.id}`;
-          const dl = s.data.uploaded_at || r.uploaded_at || '';
-          m.textContent = `${fl}${dl ? ' • ' + dl : ''}`;
-          const topic = s.data.topic && String(s.data.topic).trim();
-          t.textContent = topic || '(No topic yet)';
-          __currentRecordId = r.id;
-          document.getElementById("regenTopicBtn").disabled = false;
-        } catch (err) {
-          document.getElementById("extractedText").textContent = `❌ ${err.message || 'Error'}`;
-        }
-      };
+      row.onclick = () => loadRecordDetails(r, { showPreparingMessage: true });
+      if (desiredActiveId && Number(desiredActiveId) === Number(r.id)) {
+        row.classList.add('active-record');
+        if (!desiredRecordMeta) desiredRecordMeta = r;
+      }
 
       c.appendChild(row);
     });
+    if (desiredActiveId && desiredRecordMeta) {
+      if (__activeRecordMeta && Number(__activeRecordMeta.id) === Number(desiredActiveId)) {
+        highlightActiveRecordRow();
+        updateActiveDocumentUI();
+      } else {
+        await loadRecordDetails(desiredRecordMeta, { showPreparingMessage: false });
+      }
+    } else if (desiredActiveId && !desiredRecordMeta) {
+      clearActiveDocument();
+    } else {
+      updateActiveDocumentUI();
+    }
   } catch (err) {
     c.innerHTML = `<div class="text-danger">❌ ${(err && err.message) || 'Failed to load records.'}</div>`;
   }

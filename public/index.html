@@ -166,6 +166,7 @@
 
           <div><strong>Imported Files:</strong></div>
           <div id="recordMessage" class="mb-2" aria-live="polite"></div>
+          <div id="activeDocNotice" class="mb-2 small-muted">No active document selected.</div>
           <div id="recordItems" class="mb-3 upload-white"></div>
 
           <div class="divider"></div>
@@ -175,6 +176,7 @@
             <button id="regenTopicBtn" class="btn btn-sm btn-outline-primary" disabled>↻ Regenerate topic</button>
           </div>
           <div id="selectedFileMeta" class="mb-2 text-muted" style="font-size: 0.95rem;"></div>
+          <div id="activeDocStatus" class="mb-2 text-info small" role="status"></div>
           <div id="extractedText" class="upload-white"></div>
         </div>
 
@@ -223,6 +225,7 @@
         </div>
       </div>
 
+      <div id="qaActiveDocNotice" class="small-muted mt-2">Active document: none selected.</div>
       <div id="modelNotice" class="inline-notice mt-2" role="status" aria-live="polite">
         <span class="dot" aria-hidden="true"></span>
         <span id="modelNoticeText">Select a model (Local / Offline or Online Granite) to start asking questions.</span>
