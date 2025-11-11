@@ -207,6 +207,16 @@ function showRecordMessage(type, text) {
   setTimeout(() => { if (el.textContent && el.textContent.includes(text)) el.innerHTML = ''; }, 4000);
 }
 
+function escapeHtml(str = '') {
+  return String(str).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[ch] || ch);
+}
+
 // -------- Ollama status --------
 let slmActive = false;
 let slmProbeTimer = null;
@@ -908,10 +918,13 @@ function mapErrorToFriendly(msg = '') {
 function safeParseJSON(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
 function appendToAnswer(text) {
-  const a = document.getElementById('answer');
-  if (!a) return;
-  if (!a.innerHTML) a.innerHTML = '<b>Answer:</b>\n\n';
-  a.innerHTML += text;
+  const target = document.getElementById('answerBody') || document.getElementById('answer');
+  if (!target) return;
+  if (!target.dataset.answerStarted) {
+    target.innerHTML = '<b>Answer:</b>\n\n';
+    target.dataset.answerStarted = '1';
+  }
+  target.innerHTML += text;
 }
 
 // NEW: measure both stream-start and first-visible-typing timestamps
@@ -919,7 +932,7 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
   return new Promise((resolve) => {
     try { window.api.removeAskStreamListeners(); } catch (_) {}
 
-    const answerEl = document.getElementById('answer');
+    const answerEl = document.getElementById('answerBody') || document.getElementById('answer');
 
     // Info banner shows timing
     const infoId = 'streamStartInfo';
@@ -928,7 +941,9 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
       infoBox = document.createElement('div');
       infoBox.id = infoId;
       infoBox.className = 'mt-2 small-muted';
-      if (answerEl) answerEl.insertAdjacentElement('beforebegin', infoBox);
+      if (answerEl?.parentElement) {
+        answerEl.parentElement.insertBefore(infoBox, answerEl);
+      }
     }
     infoBox.textContent = '⏳ Waiting for stream to start…';
 
@@ -1037,26 +1052,38 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
   });
 }
 
+
 async function askQuestion() {
   const qEl = document.getElementById("questionInput");
   const a   = document.getElementById("answer");
-  const q   = (qEl?.value || '').trim();
+  const questionText = (qEl?.value || '').trim();
 
   const chosen = (localStorage.getItem('qaModel') || 'none');
   if (chosen === 'none') {
     const notice = document.getElementById('modelNotice');
     if (notice) { notice.style.boxShadow = '0 0 0 3px rgba(255,193,7,.35)'; setTimeout(() => notice.style.boxShadow = '', 1200); }
-    a.innerHTML = `<div class="text-muted">Select a model above to continue.</div>`;
+    a.innerHTML = <div class="text-muted">Select a model above to continue.</div>;
     return;
   }
-  if (!q) { a.textContent = "❌ Please enter a question."; return; }
+  if (!questionText) { a.textContent = "? Please enter a question."; return; }
+  if (qEl) qEl.value = '';
+
+  if (a) {
+    a.innerHTML = `<div class="qa-question"><strong>Question:</strong> ${escapeHtml(questionText)}</div>`;
+    const responseBlock = document.createElement('div');
+    responseBlock.id = 'answerBody';
+    a.appendChild(responseBlock);
+  }
 
   const scope = currentScopeFromUI();
 
   const showThinking = (label) => {
-    a.innerHTML = `<div class="d-flex align-items-center text-muted">
+    const target = document.getElementById('answerBody') || a;
+    if (!target) return;
+    target.removeAttribute('data-answer-started');
+    target.innerHTML = `<div class="d-flex align-items-center text-muted">
       <div class="spinner-border spinner-border-sm me-2"></div>
-      <span>Exploring (${label})…</span>
+      <span>Exploring (${label}).</span>
     </div>`;
   };
 
@@ -1068,27 +1095,30 @@ async function askQuestion() {
     if (chosen === 'online') {
       const existingInfo = document.getElementById('streamStartInfo');
       if (existingInfo) existingInfo.remove();
-      a.innerHTML = '';
       showThinking('Online Granite');
 
       const initiatedAt = performance.now();
-      const res = await startAskStream(q, scope, 4, initiatedAt);
+      const res = await startAskStream(questionText, scope, 4, initiatedAt);
       const totalElapsed = ((performance.now() - initiatedAt)/1000).toFixed(2);
 
       if (res && res.success) {
         const footer = document.createElement('div');
         footer.className = 'small-muted mt-2';
-        footer.textContent = `✅ Answer complete (${totalElapsed}s).`;
-        a.appendChild(footer);
+        footer.textContent = `? Answer complete (${totalElapsed}s).`;
+        const target = document.getElementById('answerBody') || a;
+        target?.appendChild(footer);
       } else {
-        a.innerHTML += `\n\n❌ ${(res && res.error) || 'Stream ended abnormally.'}`;
+        const target = document.getElementById('answerBody') || a;
+        if (target) target.innerHTML += `\n\n? ${(res && res.error) || 'Stream ended abnormally.'}`;
       }
     } else {
-      a.innerHTML = '<div class="text-muted">Local/offline QA not implemented in this build.</div>';
+      const target = document.getElementById('answerBody') || a;
+      if (target) target.innerHTML = '<div class="text-muted">Local/offline QA not implemented in this build.</div>';
     }
   } catch (err) {
     console.error('QA error', err);
-    document.getElementById('answer').textContent = `❌ ${err.message || 'Error'}`;
+    const target = document.getElementById('answerBody') || document.getElementById('answer');
+    if (target) target.textContent = `? ${err.message || 'Error'}`;
   }
 }
 
@@ -1210,6 +1240,7 @@ function showAgentFeature(feature) {
 showSection('dashboard');
 loadAgentTemplates();
 startOllamaWatch();
+loadDocumentRecords().catch(err => console.warn('Initial record load failed:', err));
 loadCurrentUser().then(async () => {
   updateCollectionBadge();
   try { await runAutoSummaryAtStartup(); } catch (_) {}
