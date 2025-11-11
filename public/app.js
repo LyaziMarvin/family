@@ -1062,7 +1062,7 @@ async function askQuestion() {
   if (chosen === 'none') {
     const notice = document.getElementById('modelNotice');
     if (notice) { notice.style.boxShadow = '0 0 0 3px rgba(255,193,7,.35)'; setTimeout(() => notice.style.boxShadow = '', 1200); }
-    a.innerHTML = <div class="text-muted">Select a model above to continue.</div>;
+    a.innerHTML = `<div class="text-muted">Select a model above to continue.</div>`;
     return;
   }
   if (!questionText) { a.textContent = "? Please enter a question."; return; }
