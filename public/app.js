@@ -535,7 +535,7 @@ async function handleUpload() {
       // Auto-summary after upload
       try {
         if (recordId) {
-        const q = "What is the main topic of this document? Respond with a title of ten words or fewer.";
+          const q = "What is the main topic of this document? Respond with a title of ten words or fewer.";
           const streamScope = { type: 'ids', ids: [recordId] };
           try {
             const done = await startAskStream(q, streamScope);
@@ -649,7 +649,7 @@ async function loadDocumentRecords() {
         const alreadyReady = (__currentRecordId === r.id) && __docReadyForQuestions;
         loadRecordDetails(r, { showPreparingMessage: alreadyReady ? false : true })
           .then(() => {
-            if ( __docReadyForQuestions) {
+            if (__docReadyForQuestions) {
               showSection('qa');
             }
           });

@@ -60,6 +60,8 @@
           <a class="sublink" href="#" onclick="showSection('installedAgents')">Installed Agents</a>
         </div>
       </li>
+
+      <li><a class="link" href="#" onclick="showSection('about')">About</a></li>
     </ul>
 
     <div class="logout-wrap"><a class="logout-btn" href="#" onclick="logout()">Logout</a></div>
@@ -257,6 +259,12 @@
       <textarea id="questionInput" class="form-control mt-2" rows="3" placeholder="Select a model to enable asking" disabled></textarea>
       <button id="askBtn" class="btn btn-primary mt-2" onclick="askQuestion()" disabled>Ask</button>
       <div id="answer" class="response-box mt-3" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- About -->
+    <div id="about" class="section hidden section-white">
+      <h4>About</h4>
+      <p id="aboutModelText">Current model: checking...</p>
     </div>
   </div>
 
