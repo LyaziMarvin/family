@@ -10,6 +10,9 @@ let __currentRecordId = storedActiveRecordId ? Number(storedActiveRecordId) : nu
 if (Number.isNaN(__currentRecordId)) __currentRecordId = null;
 let __activeRecordMeta = null;
 let __activeDocStatusTimer = null;
+let __docReadyForQuestions = false;
+let __modelSelectionAllowsQuestions = false;
+let __activeLoadToken = 0;
 
 async function loadCurrentUser() {
   try {
@@ -39,6 +42,30 @@ function setActiveDocStatus(message, autoClearMs = null) {
       statusEl.textContent = '';
       __activeDocStatusTimer = null;
     }, autoClearMs);
+  }
+}
+
+function updateQuestionInputState() {
+  const askBtn = document.getElementById('askBtn');
+  const qEl = document.getElementById('questionInput');
+  if (!askBtn || !qEl) return;
+  const allow = __docReadyForQuestions && __modelSelectionAllowsQuestions;
+  askBtn.disabled = !allow;
+  qEl.disabled = !allow;
+  let placeholder = 'Select a document to prepare questions.';
+  if (__activeRecordMeta) {
+    if (!__docReadyForQuestions) placeholder = 'Preparing document...';
+    else if (!__modelSelectionAllowsQuestions) placeholder = 'Select a model to enable asking.';
+    else placeholder = 'Type your question.';
+  }
+  qEl.placeholder = placeholder;
+}
+
+function setDocumentReadyForQuestions(isReady, statusMessage = null, autoClearMs = null) {
+  __docReadyForQuestions = !!isReady;
+  updateQuestionInputState();
+  if (typeof statusMessage === 'string') {
+    setActiveDocStatus(statusMessage, autoClearMs);
   }
 }
 
@@ -94,6 +121,7 @@ function clearActiveDocument() {
   __activeRecordMeta = null;
   localStorage.removeItem(ACTIVE_RECORD_STORAGE_KEY);
   updateActiveDocumentUI('');
+  setDocumentReadyForQuestions(false);
   setActiveDocStatus('');
 }
 
@@ -101,12 +129,15 @@ async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = 
   const recordId = Number(recordMeta?.id);
   if (!recordId) return;
 
+  const loadToken = ++__activeLoadToken;
+  setDocumentReadyForQuestions(false);
   if (showPreparingMessage) {
     setActiveDocStatus('Preparing document for questions... This may take a couple of minutes, depending on the size of the document.');
   }
 
   try {
     const response = await window.api.getRecordById(recordId, token);
+    if (loadToken !== __activeLoadToken) return;
     if (!response || !response.success) {
       if (showPreparingMessage) {
         const errMsg = response?.error || 'Failed to load document.';
@@ -121,22 +152,51 @@ async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = 
     __currentRecordId = recordId;
     localStorage.setItem(ACTIVE_RECORD_STORAGE_KEY, String(recordId));
     __activeRecordMeta = { id: recordId, name, uploaded_at: uploaded };
+    updateQuestionInputState();
 
     const topic = (data.topic && String(data.topic).trim()) || '';
     updateActiveDocumentUI(topic);
 
-    if (showPreparingMessage) {
-      setActiveDocStatus('Document ready for questions.', 4000);
+    if (topic) {
+      setDocumentReadyForQuestions(true, 'Ready for questions.');
+      return;
+    }
+
+    const warmed = await warmUpDocumentTopic(recordId, loadToken);
+    if (loadToken !== __activeLoadToken) return;
+    if (warmed) {
+      setDocumentReadyForQuestions(true, 'Ready for questions.');
     } else {
-      setActiveDocStatus('');
+      setActiveDocStatus('Unable to prepare document for questions.', 6000);
     }
   } catch (err) {
+    if (loadToken !== __activeLoadToken) return;
     const msg = err?.message || 'Unknown error';
     setActiveDocStatus(`Failed to prepare document: ${msg}`, 6000);
   }
 }
 
+async function warmUpDocumentTopic(recordId, loadToken) {
+  if (!recordId || typeof window.api.regenerateTopic !== 'function') return false;
+  try {
+    const res = await window.api.regenerateTopic(recordId, token);
+    if (loadToken !== __activeLoadToken) return false;
+    if (res && res.success && res.data && res.data.topic) {
+      updateActiveDocumentUI(res.data.topic);
+      return true;
+    }
+  } catch (err) {
+    if (loadToken === __activeLoadToken) {
+      const msg = err?.message || 'Topic warm-up failed.';
+      console.warn('Warm-up topic failed:', err);
+      setActiveDocStatus(msg, 6000);
+    }
+  }
+  return false;
+}
+
 updateActiveDocumentUI();
+updateQuestionInputState();
 
 // -------- Inline notices (uploads) --------
 function showRecordMessage(type, text) {
@@ -712,11 +772,8 @@ function getStoredModel() { return localStorage.getItem(MODEL_KEY) || 'none'; }
 function storeModel(value) { localStorage.setItem(MODEL_KEY, value); }
 
 function setAskControlsEnabled(enabled) {
-  const askBtn = document.getElementById('askBtn');
-  const qEl = document.getElementById('questionInput');
-  if (askBtn) askBtn.disabled = !enabled;
-  if (qEl) qEl.disabled = !enabled;
-  if (qEl) qEl.placeholder = enabled ? 'Type your question…' : 'Select a model to enable asking…';
+  __modelSelectionAllowsQuestions = !!enabled;
+  updateQuestionInputState();
 }
 
 function updateModelBadge(state) {
@@ -1049,6 +1106,7 @@ async function regenerateTopicForCurrent() {
       if (res && res.success && res.data && res.data.topic) {
         t.textContent = res.data.topic;
         showRecordMessage('success', '✅ Topic updated.');
+        setDocumentReadyForQuestions(true, 'Ready for questions.');
         await loadDocumentRecords(); // refresh list
       } else {
         t.textContent = textBackup;
