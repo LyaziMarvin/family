@@ -18,12 +18,12 @@ async function loadCurrentUser() {
   try {
     const r = await window.api.getCurrentUser(token);
     if (r?.success && r.data) { __currentUser = r.data; }
-  } catch (_) {}
+  } catch (_) { }
   return __currentUser;
 }
 
 function logout() {
-  try { window.api.logout?.(); } catch (e) {}
+  try { window.api.logout?.(); } catch (e) { }
   if (slmProbeTimer) { clearInterval(slmProbeTimer); slmProbeTimer = null; }
   localStorage.clear();
   window.location.href = "login.html";
@@ -230,28 +230,28 @@ function updateSLMStatus() {
 
 async function probeOllama() {
   const arrow = document.getElementById("slmArrow");
-  const text  = document.getElementById("slmText");
+  const text = document.getElementById("slmText");
   try {
     text.textContent = "Checking...";
     const status = await window.api.getOllamaStatus();
     slmActive = !!status?.running;
     if (slmActive) {
       arrow.textContent = "🟢";
-      text.textContent  = `Ollama${status.version ? " v" + status.version : ""} running`;
+      text.textContent = `Ollama${status.version ? " v" + status.version : ""} running`;
     } else {
       arrow.textContent = "🔴";
-      text.textContent  = "Ollama not reachable";
+      text.textContent = "Ollama not reachable";
     }
   } catch (e) {
     slmActive = false;
     arrow.textContent = "❌";
-    text.textContent  = "Check failed";
+    text.textContent = "Check failed";
   }
   updateSLMStatus();
 }
 
 async function startOllamaWatch() {
-  try { await window.api.ensureOllamaStarted(); } catch (_) {}
+  try { await window.api.ensureOllamaStarted(); } catch (_) { }
   await probeOllama();
   if (slmProbeTimer) clearInterval(slmProbeTimer);
   slmProbeTimer = setInterval(probeOllama, 2000);
@@ -318,12 +318,12 @@ async function loadProfile() {
       const form = document.getElementById("profileForm");
       form.style.display = 'block';
 
-      document.getElementById("profileEmail").value   = u.email || '';
-      document.getElementById("profileName").value    = u.name || '';
-      document.getElementById("profilePhone").value   = u.phone || '';
-      document.getElementById("profileDob").value     = u.dob || '';
-      document.getElementById("profileAge").value     = (u.age ?? '') === null ? '' : (u.age ?? '');
-      document.getElementById("profileGender").value  = u.gender || '';
+      document.getElementById("profileEmail").value = u.email || '';
+      document.getElementById("profileName").value = u.name || '';
+      document.getElementById("profilePhone").value = u.phone || '';
+      document.getElementById("profileDob").value = u.dob || '';
+      document.getElementById("profileAge").value = (u.age ?? '') === null ? '' : (u.age ?? '');
+      document.getElementById("profileGender").value = u.gender || '';
       document.getElementById("profileAddress").value = u.address || '';
 
       const preview = document.getElementById("profilePhotoPreview");
@@ -335,12 +335,12 @@ async function loadProfile() {
         const ageInput = document.getElementById("profileAge");
         if (dobStr) {
           const today = new Date();
-          const [y,m,d] = dobStr.split('-').map(Number);
+          const [y, m, d] = dobStr.split('-').map(Number);
           if (y && m && d) {
             let age = today.getFullYear() - y;
             const bd = new Date(y, m - 1, d);
             const hasHadBirthday = (today.getMonth() > bd.getMonth()) ||
-                                   (today.getMonth() === bd.getMonth() && today.getDate() >= bd.getDate());
+              (today.getMonth() === bd.getMonth() && today.getDate() >= bd.getDate());
             if (!hasHadBirthday) age -= 1;
             ageInput.value = Math.max(0, age);
           }
@@ -358,12 +358,12 @@ async function loadProfile() {
 
       document.getElementById("saveProfileBtn").onclick = async () => {
         const updatedData = {
-          email:   document.getElementById("profileEmail").value.trim(),
-          name:    document.getElementById("profileName").value.trim(),
-          phone:   document.getElementById("profilePhone").value.trim(),
-          dob:     document.getElementById("profileDob").value || null,
-          age:     document.getElementById("profileAge").value,
-          gender:  document.getElementById("profileGender").value || null,
+          email: document.getElementById("profileEmail").value.trim(),
+          name: document.getElementById("profileName").value.trim(),
+          phone: document.getElementById("profilePhone").value.trim(),
+          dob: document.getElementById("profileDob").value || null,
+          age: document.getElementById("profileAge").value,
+          gender: document.getElementById("profileGender").value || null,
           address: document.getElementById("profileAddress").value.trim(),
         };
 
@@ -789,13 +789,13 @@ function setAskControlsEnabled(enabled) {
 function updateModelBadge(state) {
   const badge = document.getElementById('modelStatusBadge');
   if (!badge) return;
-  if (state === 'none')      { badge.textContent = 'No model selected'; badge.className = 'badge bg-warning text-dark'; }
+  if (state === 'none') { badge.textContent = 'No model selected'; badge.className = 'badge bg-warning text-dark'; }
   else if (state === 'offline') { badge.textContent = 'Model: Local / Offline'; badge.className = 'badge bg-success'; }
-  else if (state === 'online')  { badge.textContent = 'Model: Online Granite';  badge.className = 'badge bg-success'; }
+  else if (state === 'online') { badge.textContent = 'Model: Online Granite'; badge.className = 'badge bg-success'; }
 }
 
 function clearModelButtonsActive() {
-  ['btnModelOffline','btnModelOnline'].forEach(id => {
+  ['btnModelOffline', 'btnModelOnline'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('btn-primary');
@@ -829,7 +829,7 @@ document.getElementById('btnModelOnline')?.addEventListener('click', () => {
 function applyModelUIFromStorage() {
   const st = getStoredModel();
   if (st === 'offline') activateButton('btnModelOffline');
-  if (st === 'online')  activateButton('btnModelOnline');
+  if (st === 'online') activateButton('btnModelOnline');
   updateModelBadge(st);
   setAskControlsEnabled(st !== 'none');
 }
@@ -865,18 +865,18 @@ function renderScopeFileList(rows) {
 
 function currentScopeFromUI() {
   const latest = document.getElementById('scopeLatest')?.checked;
-  const all    = document.getElementById('scopeAll')?.checked;
-  const ids    = document.getElementById('scopeSelected')?.checked;
+  const all = document.getElementById('scopeAll')?.checked;
+  const ids = document.getElementById('scopeSelected')?.checked;
 
   if (latest) return { type: 'latest' };
-  if (all)    return { type: 'all' };
+  if (all) return { type: 'all' };
 
   const list = document.querySelectorAll('#scopeFileList input[type="checkbox"]:checked');
   const selectedIds = Array.from(list).map(el => Number(el.value)).filter(Number.isInteger);
   return { type: 'ids', ids: selectedIds };
 }
 
-['scopeLatest','scopeAll','scopeSelected'].forEach(id => {
+['scopeLatest', 'scopeAll', 'scopeSelected'].forEach(id => {
   const el = document.getElementById(id);
   el?.addEventListener('change', async () => {
     const area = document.getElementById('scopePickerArea');
@@ -930,7 +930,7 @@ function appendToAnswer(text) {
 // NEW: measure both stream-start and first-visible-typing timestamps
 function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt = null) {
   return new Promise((resolve) => {
-    try { window.api.removeAskStreamListeners(); } catch (_) {}
+    try { window.api.removeAskStreamListeners(); } catch (_) { }
 
     const answerEl = document.getElementById('answerBody') || document.getElementById('answer');
 
@@ -1002,7 +1002,7 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
       let visible = '';
       if (parsed) {
         if (parsed.type === 'done' || parsed.done === true) {
-          try { window.api.removeAskStreamListeners(); } catch {}
+          try { window.api.removeAskStreamListeners(); } catch { }
           updateBanner();
           resolve({ success: true });
           return;
@@ -1022,12 +1022,12 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
           firstTypedAt = performance.now();
           updateBanner();
         }
-        try { showAutoSummary((document.getElementById('answer').innerText || '').trim().slice(0, 4000)); } catch {}
+        try { showAutoSummary((document.getElementById('answer').innerText || '').trim().slice(0, 4000)); } catch { }
       }
     };
 
     const onErr = (msg) => {
-      try { window.api.removeAskStreamListeners(); } catch {}
+      try { window.api.removeAskStreamListeners(); } catch { }
       clearTimeout(stallTimer);
       const box = document.getElementById(infoId);
       if (box && !firstChunkAt) {
@@ -1045,7 +1045,7 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
     try {
       window.api.askStreamStart({ question, token, scope, topK });
     } catch (e) {
-      try { window.api.removeAskStreamListeners(); } catch {}
+      try { window.api.removeAskStreamListeners(); } catch { }
       clearTimeout(stallTimer);
       resolve({ success: false, error: e?.message || String(e) });
     }
@@ -1055,7 +1055,7 @@ function startAskStream(question, scope = { type: 'all' }, topK = 4, initiatedAt
 
 async function askQuestion() {
   const qEl = document.getElementById("questionInput");
-  const a   = document.getElementById("answer");
+  const a = document.getElementById("answer");
   const questionText = (qEl?.value || '').trim();
 
   const chosen = (localStorage.getItem('qaModel') || 'none');
@@ -1099,7 +1099,7 @@ async function askQuestion() {
 
       const initiatedAt = performance.now();
       const res = await startAskStream(questionText, scope, 4, initiatedAt);
-      const totalElapsed = ((performance.now() - initiatedAt)/1000).toFixed(2);
+      const totalElapsed = ((performance.now() - initiatedAt) / 1000).toFixed(2);
 
       if (res && res.success) {
         const footer = document.createElement('div');
@@ -1243,7 +1243,7 @@ startOllamaWatch();
 loadDocumentRecords().catch(err => console.warn('Initial record load failed:', err));
 loadCurrentUser().then(async () => {
   updateCollectionBadge();
-  try { await runAutoSummaryAtStartup(); } catch (_) {}
+  try { await runAutoSummaryAtStartup(); } catch (_) { }
 });
 
 // Debug helpers
