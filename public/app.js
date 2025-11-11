@@ -13,6 +13,7 @@ let __activeDocStatusTimer = null;
 let __docReadyForQuestions = false;
 let __modelSelectionAllowsQuestions = false;
 let __activeLoadToken = 0;
+let __pendingNavigateToQA = false;
 
 async function loadCurrentUser() {
   try {
@@ -29,14 +30,20 @@ function logout() {
   window.location.href = "login.html";
 }
 
-function setActiveDocStatus(message, autoClearMs = null) {
+function setActiveDocStatus(message, { autoClearMs = null, showSpinner = false } = {}) {
   const statusEl = document.getElementById('activeDocStatus');
   if (!statusEl) return;
   if (__activeDocStatusTimer) {
     clearTimeout(__activeDocStatusTimer);
     __activeDocStatusTimer = null;
   }
-  statusEl.textContent = message || '';
+  if (!message) {
+    statusEl.textContent = '';
+  } else if (showSpinner) {
+    statusEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${message}`;
+  } else {
+    statusEl.textContent = message;
+  }
   if (message && autoClearMs) {
     __activeDocStatusTimer = setTimeout(() => {
       statusEl.textContent = '';
@@ -65,7 +72,7 @@ function setDocumentReadyForQuestions(isReady, statusMessage = null, autoClearMs
   __docReadyForQuestions = !!isReady;
   updateQuestionInputState();
   if (typeof statusMessage === 'string') {
-    setActiveDocStatus(statusMessage, autoClearMs);
+    setActiveDocStatus(statusMessage, { autoClearMs });
   }
 }
 
@@ -130,9 +137,10 @@ async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = 
   if (!recordId) return;
 
   const loadToken = ++__activeLoadToken;
-  setDocumentReadyForQuestions(false);
+  __pendingNavigateToQA = !!showPreparingMessage;
+  setDocumentReadyForQuestions(false, 'Preparing document for questions... This may take a couple of minutes, depending on the size of the document.', null);
   if (showPreparingMessage) {
-    setActiveDocStatus('Preparing document for questions... This may take a couple of minutes, depending on the size of the document.');
+    setActiveDocStatus('Preparing document for questions... This may take a couple of minutes, depending on the size of the document.', { showSpinner: true });
   }
 
   try {
@@ -159,6 +167,10 @@ async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = 
 
     if (topic) {
       setDocumentReadyForQuestions(true, 'Ready for questions.');
+      if (__pendingNavigateToQA) {
+        __pendingNavigateToQA = false;
+        showSection('qa');
+      }
       return;
     }
 
@@ -166,13 +178,17 @@ async function loadRecordDetails(recordMeta, { showPreparingMessage = false } = 
     if (loadToken !== __activeLoadToken) return;
     if (warmed) {
       setDocumentReadyForQuestions(true, 'Ready for questions.');
+      if (__pendingNavigateToQA) {
+        __pendingNavigateToQA = false;
+        showSection('qa');
+      }
     } else {
-      setActiveDocStatus('Unable to prepare document for questions.', 6000);
+      setActiveDocStatus('Unable to prepare document for questions.', { autoClearMs: 6000 });
     }
   } catch (err) {
     if (loadToken !== __activeLoadToken) return;
     const msg = err?.message || 'Unknown error';
-    setActiveDocStatus(`Failed to prepare document: ${msg}`, 6000);
+    setActiveDocStatus(`Failed to prepare document: ${msg}`, { autoClearMs: 6000 });
   }
 }
 
@@ -189,7 +205,7 @@ async function warmUpDocumentTopic(recordId, loadToken) {
     if (loadToken === __activeLoadToken) {
       const msg = err?.message || 'Topic warm-up failed.';
       console.warn('Warm-up topic failed:', err);
-      setActiveDocStatus(msg, 6000);
+      setActiveDocStatus(msg, { autoClearMs: 6000 });
     }
   }
   return false;
@@ -265,16 +281,26 @@ updateSLMStatus();
 
 // -------- Section switching --------
 function showSection(id) {
+  if (id === 'qa') {
+    if (!__currentRecordId) {
+      showRecordMessage('info', 'Select and load a document first.');
+      id = 'upload';
+    } else if (!__docReadyForQuestions) {
+      showRecordMessage('info', 'Preparing document for questions... please wait.');
+      setActiveDocStatus('Preparing document for questions... This may take a couple of minutes, depending on the size of the document.', { showSpinner: true });
+      id = 'upload';
+    }
+  }
   document.querySelectorAll('.section').forEach(div => div.classList.add('hidden'));
   const el = document.getElementById(id);
   if (el) el.classList.remove('hidden');
 
   const titles = {
-    dashboard: "🏠 Dashboard",
-    profile: "🙍‍♂️ User Profile",
-    upload: "📄 Shared Documents",
-    installedAgents: "🧠 Installed Agents",
-    qa: "💬 Ask a Question"
+    dashboard: "Dashboard",
+    profile: "User Profile",
+    upload: "Shared Documents",
+    installedAgents: "Installed Agents",
+    qa: "Ask a Question"
   };
   document.getElementById("sectionTitle").textContent = titles[id] || id;
 
@@ -452,7 +478,7 @@ function showAutoSummary(text) {
 async function runAutoSummaryAtStartup() {
   if (!token) return;
   try {
-    const q = "What is the main topic of this document?";
+    const q = "What is the main topic of this document? Respond with a title of ten words or fewer.";
     const res = await window.api.askQuestionOn(q, token, { type: 'latest' });
     if (res && res.success && res.answer) {
       showAutoSummary(res.answer);
@@ -488,7 +514,7 @@ async function handleUpload() {
     return;
   }
 
-  statusEl.textContent = '⏳ Uploading...';
+  statusEl.textContent = '⏳ Uploading & preprocessing...';
   try {
     const res = await window.api.uploadFiles({ docPath: doc.path, photoPaths: [], musicPaths: [], token });
     statusEl.textContent = res && res.success ? "✅ Import successful" : `❌ ${(res && res.error) || 'Upload failed.'}`;
@@ -507,7 +533,7 @@ async function handleUpload() {
       // Auto-summary after upload
       try {
         if (recordId) {
-          const q = "What is the main topic of this document?";
+        const q = "What is the main topic of this document? Respond with a title of ten words or fewer.";
           const streamScope = { type: 'ids', ids: [recordId] };
           try {
             const done = await startAskStream(q, streamScope);
@@ -617,7 +643,15 @@ async function loadDocumentRecords() {
       row.appendChild(left);
       row.appendChild(right);
 
-      row.onclick = () => loadRecordDetails(r, { showPreparingMessage: true });
+      row.onclick = () => {
+        const alreadyReady = (__currentRecordId === r.id) && __docReadyForQuestions;
+        loadRecordDetails(r, { showPreparingMessage: alreadyReady ? false : true })
+          .then(() => {
+            if ( __docReadyForQuestions) {
+              showSection('qa');
+            }
+          });
+      };
       if (desiredActiveId && Number(desiredActiveId) === Number(r.id)) {
         row.classList.add('active-record');
         if (!desiredRecordMeta) desiredRecordMeta = r;
@@ -1144,7 +1178,7 @@ async function regenerateTopicForCurrent() {
       }
     } else {
       // Fallback: just re-ask and display (no DB save)
-      const q = "What is the main topic of this document?";
+      const q = "What is the main topic of this document? Respond with a title of ten words or fewer.";
       const scope = { type: 'ids', ids: [__currentRecordId] };
       const initiatedAt = performance.now();
       const done = await startAskStream(q, scope, 4, initiatedAt);

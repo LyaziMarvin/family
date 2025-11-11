@@ -389,7 +389,7 @@ ipcMain.on('ask:on:question:stream', async (event, { question, token, scope, top
 });
 
 // ---------------- Auto-query helper (new) ----------------
-ipcMain.handle('ask:on:auto', async (_event, { token, scope = { type: 'latest' }, question = 'What is the main topic of this document?', topK = 2 }) => {
+ipcMain.handle('ask:on:auto', async (_event, { token, scope = { type: 'latest' }, question = 'What is the main topic of this document? Answer with a title of ten words or fewer.', topK = 2 }) => {
   const decoded = decodeToken(token);
   if (!decoded?.userId) return { success: false, error: 'Not authenticated' };
 

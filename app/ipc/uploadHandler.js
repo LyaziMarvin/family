@@ -282,7 +282,7 @@ ipcMain.handle('upload:files', async (_event, { docPath, photoPaths, musicPaths,
           }
 
           // embed the question
-          const question = 'What is the main topic of this document?';
+        const question = 'What is the main topic of this document? Answer with a document title of at most 10 words.';
           let qEmb = null;
           try {
             qEmb = await embedOne(question);
