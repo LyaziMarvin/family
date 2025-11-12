@@ -4,7 +4,7 @@
 
 ## Executive Summary
 
-Family Circle is a esktop application built on Electron that serves as an AI-powered document management and query system. The application enables users to upload documents (PDF, DOC, DOCX), automatically processes them through RAG pipelines using local embeddings and remote LLM services, and provides intelligent question-answering capabilities.
+Family Circle is a desktop application built on Electron that serves as an AI-powered document management and query system. The application enables users to upload documents (PDF, DOC, DOCX), automatically processes them through RAG pipelines using local embeddings and remote LLM services, and provides intelligent question-answering capabilities.
 
 **Principal Modules:**
 
@@ -440,6 +440,190 @@ sequenceDiagram
 3. **File System Abstraction**:
    - Frontend never directly accesses file paths or database connections
    - All persistence operations mediated through IPC layer
+
+## Code Complexity & Refactoring Analysis
+
+### Large Files Requiring Decomposition
+
+#### 1. `public/app.js` (1,309 lines) - **CRITICAL REFACTORING NEEDED**
+
+**Current Issues**:
+
+- Monolithic frontend controller handling multiple concerns
+- Global state management scattered throughout single file
+- UI logic, business logic, and API calls intermixed
+
+**Refactoring Impact**: Changes to document state management require modifications in:
+
+- `public/app.js` (UI state updates)
+- `app/ipc/recordsHandler.js` (database operations)
+- `app/ipc/uploadHandler.js` (document processing)
+- `app/ipc/askOnHandler.js` (RAG readiness checks)
+
+**Suggested Decomposition**:
+
+```javascript
+// Proposed structure
+public/js/
+├── components/
+│   ├── DocumentManager.js     // Lines 136-250 (document loading/readiness)
+│   ├── QuestionInterface.js   // Lines 1000-1150 (Q&A UI logic)
+│   ├── UserProfile.js         // Lines 400-500 (profile management)
+│   └── AgentTemplates.js      // Lines 1200-1300 (agent features)
+├── services/
+│   ├── ApiService.js          // Centralized window.api calls
+│   ├── StateManager.js        // Global state (__currentRecordId, etc.)
+│   └── StreamingService.js    // Real-time response handling
+├── utils/
+│   ├── DomUtils.js           // Element manipulation helpers
+│   └── ErrorHandling.js      // User-friendly error mapping
+└── app.js                     // Main initialization (< 200 lines)
+```
+
+#### 2. `app/ipc/uploadHandler.js` (367 lines) - **HIGH PRIORITY**
+
+**Current Issues**:
+
+- File processing, embedding generation, and database operations in single file
+- RAG pipeline mixed with upload logic
+- Error handling dispersed throughout processing chain
+
+**Cascade Effect Example**: Adding new document format requires changes to:
+
+- `uploadHandler.js` (parsing logic)
+- `services/extract.js` (text extraction)  
+- `public/app.js` (UI file type validation)
+- `database/db.js` (potential schema changes)
+
+**Suggested Decomposition**:
+
+```javascript
+app/services/
+├── DocumentProcessor.js      // Core text extraction (lines 150-250)
+├── EmbeddingService.js       // RAG embedding pipeline (lines 250-320) 
+├── TopicGenerator.js         // Topic generation logic (lines 320-350)
+└── FileUploadService.js      // File handling orchestration (< 100 lines)
+```
+
+#### 3. `app/ipc/askOnHandler.js` (438 lines) - **MEDIUM PRIORITY**
+
+**Current Issues**:
+
+- RAG query processing, embedding generation, and streaming in one file
+- Multiple LLM interaction patterns (streaming vs non-streaming)
+- Scope handling logic repeated across functions
+
+**Multi-File Impact**: Query interface changes require:
+
+- `askOnHandler.js` (backend processing)
+- `public/app.js` (frontend streaming handlers)
+- `src/preload.js` (IPC method signatures)
+- `public/js/script.js` (streaming UI updates)
+
+**Suggested Decomposition**:
+
+```javascript
+app/services/rag/
+├── EmbeddingService.js       // Transformers.js operations
+├── SimilarityRanker.js       // Cosine similarity + top-K selection
+├── ContextBuilder.js         // Chunk assembly + prompt construction
+├── StreamingService.js       // Real-time response handling
+└── QueryOrchestrator.js      // High-level RAG coordination
+```
+
+### Cross-File Dependency Cascades
+
+#### Authentication State Changes
+
+**Single Change Impact**: Modifying JWT token structure affects:
+
+1. **Backend**: `app/model/userModel.js` (token generation)
+2. **IPC Layer**: All handlers requiring `decodeToken()` validation
+3. **Frontend**: `public/app.js` (token storage/retrieval)
+4. **Login Flow**: `public/login.js` + `public/register.js` (token handling)
+
+#### Document Processing Pipeline Changes
+
+**Single Change Impact**: Adding document metadata extraction affects:
+
+1. **Upload**: `app/ipc/uploadHandler.js` (processing pipeline)
+2. **Database**: `app/database/db.js` (schema migration)
+3. **Records**: `app/ipc/recordsHandler.js` (CRUD operations)
+4. **Frontend**: `public/app.js` (UI display logic)
+5. **Preload**: `src/preload.js` (API method signatures)
+
+#### Streaming Response Format Changes
+
+**Single Change Impact**: Modifying streaming JSON format affects:
+
+1. **Backend**: `app/ipc/askOnHandler.js` (response generation)
+2. **IPC Protocol**: Event payload structure changes
+3. **Frontend**: `public/app.js` (streaming parse logic)
+4. **Error Handling**: Multiple files for error state management
+
+### Technical Debt Hotspots
+
+#### 1. Global State Management in `app.js`
+
+```javascript
+// Current anti-pattern: Global variables scattered throughout file
+let __currentRecordId = null;
+let __activeRecordMeta = null;
+let __docReadyForQuestions = false;
+let __modelSelectionAllowsQuestions = false;
+let __activeLoadToken = 0;
+
+// Impact: Any component needing document state must modify app.js
+```
+
+**Solution**: Centralized state management with observable patterns
+
+#### 2. Repeated IPC Error Handling
+
+```javascript
+// Pattern repeated 20+ times across frontend
+try {
+  const res = await window.api.someOperation(params);
+  if (!res.success) {
+    showRecordMessage('danger', res.error || 'Operation failed');
+    return;
+  }
+  // Handle success
+} catch (e) {
+  showRecordMessage('danger', e.message || 'Unknown error');
+}
+```
+
+**Solution**: Centralized API service with standardized error handling
+
+#### 3. Mixed Concerns in IPC Handlers
+
+```javascript
+// uploadHandler.js - File processing + RAG + Database + Topic generation
+// Single function handling 4 different concerns (lines 200-367)
+```
+
+**Solution**: Separate services following single responsibility principle
+
+### Refactoring Priority Matrix
+
+| File | Lines | Complexity | Change Frequency | Refactor Priority |
+|------|-------|------------|------------------|-------------------|
+| `public/app.js` | 1,309 | Very High | High | **CRITICAL** |
+| `app/ipc/uploadHandler.js` | 367 | High | Medium | **HIGH** |
+| `app/ipc/askOnHandler.js` | 438 | High | Medium | **MEDIUM** |
+| `app/ipc/recordsHandler.js` | 200 | Medium | Low | LOW |
+| `src/preload.js` | 80 | Low | Low | LOW |
+
+### Recommended Refactoring Strategy
+
+1. **Phase 1**: Extract `public/app.js` into component modules (2-3 weeks)
+2. **Phase 2**: Decompose `uploadHandler.js` into service layer (1-2 weeks)
+3. **Phase 3**: Refactor RAG pipeline in `askOnHandler.js` (1-2 weeks)
+4. **Phase 4**: Implement centralized state management (1 week)
+5. **Phase 5**: Add comprehensive error handling service (1 week)
+
+<!-- **Total Estimated Effort**: 6-9 weeks with proper testing and migration strategy -->
 
 ## RAG Implementation Deep Dive
 
