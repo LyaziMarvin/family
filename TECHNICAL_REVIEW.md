@@ -981,6 +981,219 @@ npx electron-rebuild        # Rebuilds native dependencies for Electron
 
 **Vector Database**: Storage system optimized for high-dimensional vector similarity search (not implemented - uses in-memory processing)
 
+## Application Startup Sequence
+
+### **Startup Sequence for Family Circle App**
+
+#### **1. Initial Command Execution**
+
+```bash
+npm start → electron . → src/main.js
+```
+
+#### **2. Electron Main Process Initialization (`src/main.js`)**
+
+**Phase A: Load Dependencies & IPC Handlers**
+
+- Loads Electron modules (`BrowserWindow`, `ipcMain`, etc.)
+- **Immediately loads ALL IPC handlers** from `app/ipc/ipcMainHandlers.js`
+  - Authentication handlers (login, register, logout)
+  - File upload handlers
+  - Records management
+  - Photo/music handlers
+  - Ollama integration
+- Sets up navigation handler (`navigate-to`)
+
+**Phase B: AI Service Startup**
+
+- **Attempts to start local Ollama server** via `ollamaProcess.js`
+  - Checks if Ollama is already running at `http://127.0.0.1:11434`
+  - If not running, spawns `ollama serve` process
+  - Waits up to 20 seconds for health check
+  - Falls back gracefully if Ollama fails to start
+- **Starts keep-alive pings** via `keepAlive.js`
+  - Immediately pings Granite model at `http://208.109.228.76:11435`
+  - Immediately pings embeddings service
+  - Sets up 90-minute interval pings to prevent model unloading
+
+**Phase C: Window Creation**
+
+- Creates main BrowserWindow (1000x700px)
+- Removes default Electron menu bar for clean UI
+- Sets application icon based on platform
+- Configures security (context isolation, no node integration)
+- Loads preload script (`src/preload.js`)
+
+#### **3. Preload Script Setup (`src/preload.js`)**
+
+- **Exposes secure API bridge** to renderer process via `contextBridge`
+- Creates `window.api` object with methods for:
+  - Authentication (login, register, logout)
+  - File uploads and records management
+  - AI questioning (both online/offline modes)
+  - Media handling (photos, music)
+  - Ollama service control
+  - Navigation between pages
+
+#### **4. Initial Page Load**
+
+- **Loads `login.html`** as the entry point
+- Sets up login form with validation
+- Configures navigation to registration page
+
+#### **5. Database Initialization (`app/database/db.js`)**
+
+- Creates SQLite database in user data directory (`family.db`)
+- Auto-creates tables if they don't exist:
+  - `users` (id, email, password)
+  - `records` (id, user_id, extracted_text, uploaded_at, etc.)
+- Runs database migrations to add new columns (`file_name`, `topic`)
+
+#### **6. User Flow After Startup**
+
+**If User Not Authenticated:**
+
+- Shows login page
+- On successful login → navigates to `index.html` (main dashboard)
+- Stores JWT token in localStorage
+
+**If User Authenticated:**
+
+- `app.js` checks for token on dashboard load
+- Loads current user profile
+- Initializes all UI components:
+  - Document upload interface
+  - AI questioning interface
+  - Profile management
+  - File records display
+- Starts periodic status checks for AI models
+
+#### **7. Background Services Running**
+
+- **Ollama local server** (if successfully started)
+- **Keep-alive pings** to remote Granite model every 90 minutes
+- **SQLite database** ready for queries
+- **File upload processing** ready
+- **AI question/answer system** ready (both local and remote)
+
+#### **8. Key Environment Variables Used**
+
+- `OLLAMA_HOST` (default: 127.0.0.1)
+- `OLLAMA_PORT` (default: 11434)
+- `SLM_URL` (remote Granite: <http://208.109.228.76:11435>)
+- `SLM_MODEL` (default: granite3.2:2b)
+- `KEEP_ALIVE_MS` (default: 90 minutes)
+
+#### **Summary**
+
+The app starts as a **hybrid local/cloud AI family data management system** - it attempts to run local AI (Ollama) for privacy while maintaining connections to remote models for enhanced capabilities. The startup is robust with graceful fallbacks if AI services fail to initialize, ensuring users can still access core features like document management and basic functionality even without AI features.
+
+---
+
+## Post-Login Application Flow
+
+### **Post-Login Flow in Family Circle**
+
+#### **1. Login Success Handling (`login.js`)**
+
+When login is successful:
+
+- **Stores JWT token** in `localStorage.setItem('token', res.token)`
+- **Navigates to main dashboard** via `window.api.navigateTo('index.html')`
+
+#### **2. Dashboard Initialization (`app.js` startup)**
+
+**Phase A: Authentication Check**
+
+- **Token validation**: Checks `localStorage.getItem('token')`
+- **Redirect if missing**: If no token found, redirects back to `login.html`
+- **User loading**: Calls `loadCurrentUser()` to fetch user profile data
+
+**Phase B: State Restoration**
+
+- **Active document recovery**: Checks `localStorage.getItem('activeRecordId')` for previously selected document
+- **Global variable setup**: Initializes UI state variables:
+  - `__currentUser` - user profile data
+  - `__currentRecordId` - last selected document ID
+  - `__docReadyForQuestions` - document preparation status
+  - `__modelSelectionAllowsQuestions` - AI model selection status
+
+**Phase C: Service Initialization**
+
+- **Ollama monitoring**: Starts `startOllamaWatch()` - polls local AI service every 2 seconds
+- **Model state restoration**: Applies saved AI model preference from localStorage
+- **Keep-alive status**: Monitors remote AI service connectivity
+
+#### **3. UI Components Activation**
+
+**Phase A: Dashboard View**
+
+- **Shows dashboard section** by default via `showSection('dashboard')`
+- **System summary display**: Auto-summary box for latest document insights
+- **Navigation setup**: All sidebar navigation becomes functional
+
+**Phase B: Background Data Loading**
+
+- **Profile data fetch**: Loads complete user profile for display
+- **Document records**: Preparation for document list (loaded when user navigates to upload section)
+- **Agent templates**: Initializes marketplace agent UI components
+
+**Phase C: Interactive Features**
+
+- **File upload handlers**: Ready for PDF/DOC/DOCX uploads
+- **AI questioning**: Prepared but requires model selection and document
+- **Photo/music upload**: Ready for media file management
+
+#### **4. Real-Time Monitoring Setup**
+
+**AI Service Status**
+
+- **Local Ollama**: Health checks every 2 seconds via `probeOllama()`
+- **Remote Granite**: Keep-alive pings every 90 minutes
+- **UI indicators**: Status badges show service availability
+
+**Document State Management**
+
+- **Active document tracking**: Maintains selected document across sessions
+- **Question readiness**: Monitors document preparation for AI queries
+- **Model selection**: Tracks user's AI model preference (local/remote)
+
+#### **5. Feature Readiness States**
+
+**Immediately Available:**
+
+- ✅ Profile management
+- ✅ Document upload
+- ✅ Photo/music upload
+- ✅ Agent marketplace browsing
+- ✅ System navigation
+
+**Requires Additional Setup:**
+
+- ⚠️ **AI questioning**: Needs model selection + document upload
+- ⚠️ **Document insights**: Needs document processing completion
+- ⚠️ **Auto-summaries**: Needs AI service availability
+
+#### **6. User Interaction Flow**
+
+**Typical Next Steps:**
+
+1. **Upload document** → Navigate to "Select Document" → Choose file
+2. **Document processing** → Automatic text extraction + AI preparation
+3. **Model selection** → Choose "Local/Offline" or "Online Granite"
+4. **AI questioning** → Navigate to "Ask a Question" → Type queries
+
+**Or Alternative Flow:**
+
+1. **Profile setup** → Complete user information
+2. **Media uploads** → Add photos/music to family collection
+3. **Agent exploration** → Browse marketplace features
+
+#### **Summary**
+
+After login, the app becomes a **fully functional family data management dashboard** with AI-powered document analysis capabilities. The system intelligently restores the user's previous session state while ensuring all background services are ready for immediate use. The user can immediately start uploading documents, managing their profile, or exploring AI features depending on their needs.
+
 ---
 
 *This technical review provides comprehensive analysis of the Family Circle application architecture, implementation patterns, and operational characteristics as of November 2025.*
+
