@@ -1193,7 +1193,83 @@ When login is successful:
 
 After login, the app becomes a **fully functional family data management dashboard** with AI-powered document analysis capabilities. The system intelligently restores the user's previous session state while ensuring all background services are ready for immediate use. The user can immediately start uploading documents, managing their profile, or exploring AI features depending on their needs.
 
+## Keep-Alive Service Implementation
+
+### **Purpose and Design Intent**
+
+The keep-alive service is a **remote AI service warming system** designed to prevent cloud-hosted models from going idle and ensure rapid response times for AI operations. The system addresses the fundamental challenge of cold start delays in cloud-hosted AI services.
+
+### **Intended Problem Being Solved**
+
+Cloud-hosted AI models automatically unload from memory during periods of inactivity to conserve resources. When a user makes a request after an idle period, the model must be reloaded from storage, which can cause delays of 30-60 seconds. For a desktop application focused on real-time document analysis and questioning, these delays create a poor user experience.
+
+### **Dual-Service Architecture**
+
+The keep-alive system maintains two critical remote services:
+
+**Text Generation Service (Granite LLM)**
+
+- Hosted at remote endpoint for answering user questions about documents
+- Requires periodic minimal text generation requests to stay warm
+- Essential for the Q&A functionality that forms the core user interaction
+
+**Embedding Service (Vector Processing)**
+
+- Required for document similarity search and RAG operations  
+- Must process text into vector embeddings for semantic matching
+- Both upload processing and question answering depend on this service
+
+### **Timing Strategy**
+
+The system uses a **90-minute interval strategy**. 
+
+### **Lifecycle Integration**
+
+**Application Startup**
+The keep-alive service starts immediately when the application launches, before the user interface is displayed. This ensures that by the time a user is ready to interact with AI features, the remote services are already warm and responsive.
+
+**Immediate Warm-Up**
+Upon startup, the system sends immediate ping requests to both services rather than waiting for the first interval. This proactive approach ensures that users who launch the app with intent to use AI features don't experience cold start delays.
+
+**Background Operation**
+The service operates entirely in the background with no user interface elements. Success and failure events are logged to the console for debugging purposes but don't interrupt the user experience.
+
+**Graceful Shutdown**
+During application termination, the keep-alive service stops cleanly to prevent orphaned network requests and ensure proper resource cleanup.
+
+### **Error Handling Philosophy**
+
+The keep-alive service is designed as an **enhancement rather than a requirement**. Network failures, service unavailability, or timeout errors are logged but don't prevent the application from functioning. The system fails gracefully, allowing users to still access all non-AI features and attempt AI operations that may succeed despite keep-alive failures.
+
+### **Resource Efficiency**
+
+The system is designed for minimal resource impact:
+
+- Extremely small network requests (under 1KB per ping cycle)
+- No data storage or caching requirements
+- Minimal CPU usage for HTTP requests
+- No memory accumulation over time
+
+### **Configuration Flexibility**
+
+All aspects of the keep-alive system are configurable via environment variables:
+
+- Remote service endpoints can be changed for different deployments
+- AI model selection can be modified for different capabilities
+- Ping intervals can be adjusted based on specific cloud provider characteristics
+- Individual services can be disabled if not needed
+
+### **Integration with Application Architecture**
+
+The keep-alive service integrates with the broader application lifecycle management:
+
+- Coordinates with local Ollama service startup
+- Integrates with Electron's app quit events
+- Operates independently of user authentication state
+- Functions regardless of which application features the user is actively using
+
+This implementation ensures that the Family Circle application provides **consistently responsive AI interactions** by maintaining cloud services in an optimal state for immediate user requests, while remaining lightweight and fault-tolerant in its operation.
+
 ---
 
 *This technical review provides comprehensive analysis of the Family Circle application architecture, implementation patterns, and operational characteristics as of November 2025.*
-
