@@ -945,42 +945,6 @@ npx electron-rebuild        # Rebuilds native dependencies for Electron
 - Async wrappers prevent blocking main thread
 - Minimal schema with focused indices
 
-## Glossary
-
-**ASAR**: Electron's archive format for packaging application files
-
-**better-sqlite3**: High-performance Node.js SQLite driver with synchronous API
-
-**Chunking**: Process of splitting documents into smaller, overlapping segments for RAG processing
-
-**Cosine Similarity**: Vector similarity measure used for finding relevant document chunks (range: -1 to 1)
-
-**Electron**: Cross-platform desktop application framework using Chromium and Node.js
-
-**Embeddings**: High-dimensional vector representations of text for semantic similarity calculations
-
-**Granite LLM**: IBM's family of large language models, particularly granite3.2:2b (2-billion parameters)
-
-**IPC (Inter-Process Communication)**: Electron's system for communication between main and renderer processes
-
-**JWT (JSON Web Token)**: Stateless authentication tokens containing encoded user claims
-
-**Ollama**: Local LLM runtime for serving language models with OpenAI-compatible APIs
-
-**Preload Script**: Electron security layer that exposes controlled APIs to renderer process via contextBridge
-
-**RAG (Retrieval-Augmented Generation)**: AI technique combining document retrieval with language generation
-
-**Scope Object**: Flexible targeting system for specifying which documents to query (`{type: 'all'|'latest'|'current'|'ids'}`)
-
-**SLM (Small Language Model)**: Lightweight language models optimized for local execution
-
-**Top-K Retrieval**: Selection of the K most relevant document chunks based on similarity scores
-
-**Transformers.js**: JavaScript implementation of Hugging Face transformers for browser/Node.js embedding generation
-
-**Vector Database**: Storage system optimized for high-dimensional vector similarity search (not implemented - uses in-memory processing)
-
 ## Application Startup Sequence
 
 ### **Startup Sequence for Family Circle App**
@@ -1084,13 +1048,11 @@ npm start → electron . → src/main.js
 - `SLM_MODEL` (default: granite3.2:2b)
 - `KEEP_ALIVE_MS` (default: 90 minutes)
 
-#### **Summary**
-
-The app starts as a **hybrid local/cloud AI family data management system** - it attempts to run local AI (Ollama) for privacy while maintaining connections to remote models for enhanced capabilities. The startup is robust with graceful fallbacks if AI services fail to initialize, ensuring users can still access core features like document management and basic functionality even without AI features.
-
 ---
 
 ## Post-Login Application Flow
+
+After login, the app becomes a **fully functional family data management dashboard** with AI-powered document analysis capabilities. The system intelligently restores the user's previous session state while ensuring all background services are ready for immediate use. The user can immediately start uploading documents, managing their profile, or exploring AI features depending on their needs.
 
 ### **Post-Login Flow in Family Circle**
 
@@ -1189,19 +1151,15 @@ When login is successful:
 2. **Media uploads** → Add photos/music to family collection
 3. **Agent exploration** → Browse marketplace features
 
-#### **Summary**
-
-After login, the app becomes a **fully functional family data management dashboard** with AI-powered document analysis capabilities. The system intelligently restores the user's previous session state while ensuring all background services are ready for immediate use. The user can immediately start uploading documents, managing their profile, or exploring AI features depending on their needs.
-
 ## Keep-Alive Service Implementation
 
 ### **Purpose and Design Intent**
 
-The keep-alive service is a **remote AI service warming system** designed to prevent cloud-hosted models from going idle and ensure rapid response times for AI operations. The system addresses the fundamental challenge of cold start delays in cloud-hosted AI services.
+The keep-alive service is a service warming system designed to prevent models from going idle and ensure rapid response times for AI operations.
 
 ### **Intended Problem Being Solved**
 
-Cloud-hosted AI models automatically unload from memory during periods of inactivity to conserve resources. When a user makes a request after an idle period, the model must be reloaded from storage, which can cause delays of 30-60 seconds. For a desktop application focused on real-time document analysis and questioning, these delays create a poor user experience.
+Ollama models automatically unload from memory after 5 minutes to conserve resources. When a user makes a request after that period, the model must be reloaded from storage, which can causes new delays to reload the document.
 
 ### **Dual-Service Architecture**
 
@@ -1221,7 +1179,7 @@ The keep-alive system maintains two critical remote services:
 
 ### **Timing Strategy**
 
-The system uses a **90-minute interval strategy**. 
+The system uses a **90-minute interval strategy**.
 
 ### **Lifecycle Integration**
 
@@ -1229,35 +1187,10 @@ The system uses a **90-minute interval strategy**.
 The keep-alive service starts immediately when the application launches, before the user interface is displayed. This ensures that by the time a user is ready to interact with AI features, the remote services are already warm and responsive.
 
 **Immediate Warm-Up**
-Upon startup, the system sends immediate ping requests to both services rather than waiting for the first interval. This proactive approach ensures that users who launch the app with intent to use AI features don't experience cold start delays.
-
-**Background Operation**
-The service operates entirely in the background with no user interface elements. Success and failure events are logged to the console for debugging purposes but don't interrupt the user experience.
-
-**Graceful Shutdown**
-During application termination, the keep-alive service stops cleanly to prevent orphaned network requests and ensure proper resource cleanup.
-
-### **Error Handling Philosophy**
+Upon startup, the system sends immediate ping requests to both services rather than waiting for the first interval. This approach ensures that users who launch the app with intent to use AI features don't experience cold start delays.
+The service operates entirely in the background with no user interface elements. Success and failure events are logged to the console for debugging purposes but don't interrupt the user experience. During application termination, the keep-alive service stops cleanly to prevent orphaned network requests and ensure proper resource cleanup.
 
 The keep-alive service is designed as an **enhancement rather than a requirement**. Network failures, service unavailability, or timeout errors are logged but don't prevent the application from functioning. The system fails gracefully, allowing users to still access all non-AI features and attempt AI operations that may succeed despite keep-alive failures.
-
-### **Resource Efficiency**
-
-The system is designed for minimal resource impact:
-
-- Extremely small network requests (under 1KB per ping cycle)
-- No data storage or caching requirements
-- Minimal CPU usage for HTTP requests
-- No memory accumulation over time
-
-### **Configuration Flexibility**
-
-All aspects of the keep-alive system are configurable via environment variables:
-
-- Remote service endpoints can be changed for different deployments
-- AI model selection can be modified for different capabilities
-- Ping intervals can be adjusted based on specific cloud provider characteristics
-- Individual services can be disabled if not needed
 
 ### **Integration with Application Architecture**
 
@@ -1268,8 +1201,89 @@ The keep-alive service integrates with the broader application lifecycle managem
 - Operates independently of user authentication state
 - Functions regardless of which application features the user is actively using
 
-This implementation ensures that the Family Circle application provides **consistently responsive AI interactions** by maintaining cloud services in an optimal state for immediate user requests, while remaining lightweight and fault-tolerant in its operation.
+---
+
+## Critical Architecture Issue: Keep-Alive vs Document Preloading Integration
+
+### Current Implementation Gap
+
+**Keep-alive and document preloading operate as completely separate, independent systems rather than an integrated workflow.**
+
+#### Keep-Alive System (Global Background Service)
+
+- **Initialized**: App launch in `main.js:65` → `startKeepAlive()`
+- **Execution**: Continuous background operation with 90-minute ping intervals
+- **Scope**: Global lifecycle (started before window creation, stopped on app quit)
+- **Target**: Granite LLM and embedding services (remote endpoints)
+- **Purpose**: Prevent models from going idle and triggering cold-start delays
+
+#### Document Preloading System (On-Demand Process)
+
+- **Triggered**: Document selection via `app.js:loadRecordDetails()` → `warmUpDocumentTopic()`
+- **Alternative**: Startup via `app.js:runAutoSummaryAtStartup()`
+- **Scope**: Activates only when user interacts with documents
+- **Target**: Specific document contexts (topic generation, embedding retrieval)
+- **Purpose**: Prepare individual documents for instant querying
+
+#### Current Integration (Indirect/Opportunistic)
+
+The systems are **complementary but not integrated**:
+
+1. Keep-alive keeps Granite LLM warm via periodic pings (90-minute intervals)
+2. When document preloading runs, the LLM is already responsive
+3. Document preloading calls `regenerateTopic()` → `askGranite()` → responds quickly because keep-alive warmed it
+4. **Critically**: Document preloading does NOT call or control keep-alive—it merely benefits from its background operation
+
+### Original Design Intent vs Current Implementation
+
+**Original Plan**: Use keep-alive as a **document-specific preloading mechanism**
+
+- Set keep-alive parameter to `-1` or `90m` minutes within Ollama **only for selected documents** to preload them into the LLM model context.
+This was to maintain the loaded document in SLM model for 90+ minutes after user interaction and ensure instant response times for document-specific queries by keeping loaded state persistent
+
+**Current Implementation**: Keep-alive as a **generic service warmer**
+
+- Global 90-minute ping interval for all remote services
+- No document-specific context preloading
+- Services kept warm but documents are regenerated/reloaded on each query
+- Misses optimization of keeping frequently-accessed documents pre-cached in model memory.
 
 ---
+
+## Glossary
+
+**ASAR**: Electron's archive format for packaging application files
+
+**better-sqlite3**: High-performance Node.js SQLite driver with synchronous API
+
+**Chunking**: Process of splitting documents into smaller, overlapping segments for RAG processing
+
+**Cosine Similarity**: Vector similarity measure used for finding relevant document chunks (range: -1 to 1)
+
+**Electron**: Cross-platform desktop application framework using Chromium and Node.js
+
+**Embeddings**: High-dimensional vector representations of text for semantic similarity calculations
+
+**Granite LLM**: IBM's family of large language models, particularly granite3.2:2b (2-billion parameters)
+
+**IPC (Inter-Process Communication)**: Electron's system for communication between main and renderer processes
+
+**JWT (JSON Web Token)**: Stateless authentication tokens containing encoded user claims
+
+**Ollama**: Local LLM runtime for serving language models with OpenAI-compatible APIs
+
+**Preload Script**: Electron security layer that exposes controlled APIs to renderer process via contextBridge
+
+**RAG (Retrieval-Augmented Generation)**: AI technique combining document retrieval with language generation
+
+**Scope Object**: Flexible targeting system for specifying which documents to query (`{type: 'all'|'latest'|'current'|'ids'}`)
+
+**SLM (Small Language Model)**: Lightweight language models optimized for local execution
+
+**Top-K Retrieval**: Selection of the K most relevant document chunks based on similarity scores
+
+**Transformers.js**: JavaScript implementation of Hugging Face transformers for browser/Node.js embedding generation
+
+**Vector Database**: Storage system optimized for high-dimensional vector similarity search (not implemented - uses in-memory processing)
 
 *This technical review provides comprehensive analysis of the Family Circle application architecture, implementation patterns, and operational characteristics as of November 2025.*
