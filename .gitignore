@@ -1,2 +1,6 @@
 node_modules/
 .github/*
+AGENTS.md
+CLAUDE.md
+package-lock.json
+settings.json
